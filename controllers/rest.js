@@ -180,36 +180,50 @@ export const selectClient = (req, res, next) => {
   }
 
   const addressSql = `SELECT * FROM addresses WHERE email = ?;`;
-  db.query(addressSql, [email], async (err, addressResult) => {
+  const clientSql = `SELECT first_name FROM clients WHERE id = ?;`;
+  db.query(addressSql, [email], (err, addressResult) => {
     if (err) {
       console.error("Error fetching addresses:", err);
       return next(new Error());
     }
-
     if (addressResult.length === 0) {
       console.error("No client found with the given email");
       return constErr(404, `No Client Found with the email: ${email}`, next);
     }
 
-    try {
-      let passwordMatch = false;
-      for (const each of addressResult) {
-        const isMatch = await bcrypt.compare(password, each.password);
-        if (isMatch) {
-          passwordMatch = true;
-          console.log(`Address_id:${each.address_id} logged-in successfully`);
-          return res.send({ address_id: each.address_id });
-        }
+    //  for the welcome toast
+    const id = addressResult[0].client_id;
+    db.query(clientSql, [id], async (err, clientResult) => {
+      if (err) {
+        console.error("Error fetching first_name", err);
+        return;
       }
 
-      if (!passwordMatch) {
-        console.error("Password doesn't match");
-        return constErr(401, "Password doesn't match", next);
+      try {
+        let passwordMatch = false;
+        for (const each of addressResult) {
+          const isMatch = await bcrypt.compare(password, each.password);
+          if (isMatch) {
+            passwordMatch = true;
+            console.log(`Address_id:${each.address_id} logged-in successfully`);
+            return res.send({
+              address_id: each.address_id,
+              first_name: clientResult[0].first_name,
+            });
+          }
+        }
+
+        if (!passwordMatch) {
+          console.error("Password doesn't match");
+          return constErr(401, "Password doesn't match", next);
+        }
+      } catch (error) {
+        console.error("Error Comparing password:", error);
+        return next(new Error());
       }
-    } catch (error) {
-      console.error("Error Comparing password:", error);
-      return next(new Error());
-    }
+
+      res.send(clientResult[0]);
+    });
   });
 };
 
