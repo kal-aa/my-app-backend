@@ -173,55 +173,43 @@ export const insertOrder = (req, res, next) => {
 //  SELECT *
 //  fb/select-client
 export const selectClient = (req, res, next) => {
-  const { password, full_name } = req.query;
-  if (!full_name || !password) {
-    console.error("Please insert your full name and Password");
-    return constErr(400, "Please insert your full name and password", next);
-  }
-  const fullName = full_name.trim().split(" ");
-  if (fullName.length !== 2) {
-    console.log("fullname.length !== 2");
-    return constErr(
-      400,
-      "Please provide both first name and last name, like: John Doe",
-      next
-    );
+  const { password, email } = req.query;
+  if (!email || !password) {
+    console.error("Please insert your email and Password");
+    return constErr(400, "Please insert your email and password", next);
   }
 
-  const addressSqlF = (addressesSql, clients) => {
-    db.query(addressesSql, clients, async (err, addressResult) => {
-      if (err) {
-        console.error("Error fetching addresses:", err);
-        return next(new Error());
+  const addressSql = `SELECT * FROM addresses WHERE email = ?;`;
+  db.query(addressSql, [email], async (err, addressResult) => {
+    if (err) {
+      console.error("Error fetching addresses:", err);
+      return next(new Error());
+    }
+
+    if (addressResult.length === 0) {
+      console.error("No client found with the given email");
+      return constErr(404, `No Client Found with the email: ${email}`, next);
+    }
+
+    try {
+      let passwordMatch = false;
+      for (const each of addressResult) {
+        const isMatch = await bcrypt.compare(password, each.password);
+        if (isMatch) {
+          passwordMatch = true;
+          console.log(`Address_id:${each.address_id} logged-in successfully`);
+          return res.send({ address_id: each.address_id });
+        }
       }
 
-      try {
-        let passwordMatch = false;
-        for (const each of addressResult) {
-          const isMatch = await bcrypt.compare(password, each.password);
-          if (isMatch) {
-            passwordMatch = true;
-            console.log(`Address_id:${each.address_id} logged-in successfully`);
-            return res.send({ address_id: each.address_id });
-          }
-        }
-
-        if (!passwordMatch) {
-          console.error("Password doesn't match");
-          return constErr(401, "Password doesn't match", next);
-        }
-      } catch (error) {
-        console.error("Error Comparing password:", error);
-        return next(new Error());
+      if (!passwordMatch) {
+        console.error("Password doesn't match");
+        return constErr(401, "Password doesn't match", next);
       }
-    });
-  };
-
-  checkClientSql(fullName, next, (idResult) => {
-    const clients = idResult.map((result) => result.id);
-    const placeholders = idResult.map(() => "?").join(", ");
-    const addressesSql = `SELECT * FROM addresses  WHERE client_id in(${placeholders})`;
-    addressSqlF(addressesSql, clients);
+    } catch (error) {
+      console.error("Error Comparing password:", error);
+      return next(new Error());
+    }
   });
 };
 
@@ -421,10 +409,7 @@ export const manageAccountUpdate = (req, res, next) => {
         return next(new Error());
       }
 
-      if (
-        emailSqlResult.length === 1 &&
-        checkIfIsPrevEmailResult.length
-      ) {
+      if (emailSqlResult.length === 1 && checkIfIsPrevEmailResult.length) {
         console.log("Went this way");
         checkAddressF();
         return;
